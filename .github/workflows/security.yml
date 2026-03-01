@@ -1,0 +1,42 @@
+name: Security Checks
+
+on: [push, pull_request]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install bandit pip-audit
+          pip install -r requirements.txt
+
+      # 1. SAST Scan (Code Security)
+      - name: Run Bandit (SAST)
+        run: bandit -r ./src -ll -ii
+        continue-on-error: false  # Fail build if vulnerabilities found
+
+      # 2. SCA Scan (Dependency Security)
+      - name: Run pip-audit (Dependency Security)
+        run: pip-audit -r requirements.txt
+
+      # 3. Container Scan (Docker Security)
+      - name: Build Docker Image
+        run: docker build -t myapp:${{ github.sha }} .
+
+      - name: Run Trivy (Container Security)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'myapp:${{ github.sha }}'
+          format: 'table'
+          exit-code: '1' # Fail build if High/Critical issues found
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
